@@ -4,23 +4,15 @@ import coursier.version.{ModuleMatchers, Version, VersionCompatibility}
 import lmcoursier.definitions.{ModuleMatchers => *, *}
 
 case class DependencyCheckReport(
-  binaryCompatibilityReport: Map[(String, String), DependencyCheckReport.ModuleStatus],
-  sourceCompatibilityReport: Map[(String, String), DependencyCheckReport.ModuleStatus]
+  compatibilityReports: Map[IncompatibilityType, Map[(String, String), DependencyCheckReport.ModuleStatus]]
 ) {
 
   def validated(incompatibilityType: IncompatibilityType): Boolean =
-    incompatibilityType match {
-      case IncompatibilityType.BinaryIncompatibility => binaryCompatibilityReport.forall(_._2.validated)
-      case IncompatibilityType.SourceIncompatibility => sourceCompatibilityReport.forall(_._2.validated)
-    }
+    compatibilityReports(incompatibilityType).forall(_._2.validated)
 
   def errors(incompatibilityType: IncompatibilityType, ignored: Set[(String, String)] = Set.empty): (Seq[String], Seq[String]) = {
 
-    val relevantErrors =
-      incompatibilityType match {
-        case IncompatibilityType.BinaryIncompatibility => binaryCompatibilityReport
-        case IncompatibilityType.SourceIncompatibility => sourceCompatibilityReport
-      }
+    val relevantErrors = compatibilityReports(incompatibilityType)
 
     val baseErrors = relevantErrors
       .filter(!_._2.validated)
@@ -72,12 +64,13 @@ object DependencyCheckReport {
     defaultReconciliation: VersionCompatibility
   ): DependencyCheckReport = {
 
-    val binaryCompatibilityReport =
-      moduleStatuses(Compatibility.BinaryCompatible, currentModules, previousModules, reconciliations, defaultReconciliation)
-    val sourceCompatibilityReport =
-      moduleStatuses(Compatibility.BinaryAndSourceCompatible, currentModules, previousModules, reconciliations, defaultReconciliation)
+    def report(compatibility: Compatibility) =
+      moduleStatuses(compatibility, currentModules, previousModules, reconciliations, defaultReconciliation)
 
-    DependencyCheckReport(binaryCompatibilityReport, sourceCompatibilityReport)
+    DependencyCheckReport(Map(
+      IncompatibilityType.BinaryIncompatibility -> report(Compatibility.BinaryCompatible),
+      IncompatibilityType.SourceIncompatibility -> report(Compatibility.BinaryAndSourceCompatible)
+    ))
   }
 
   @deprecated("This method is internal.", "1.1.0")
